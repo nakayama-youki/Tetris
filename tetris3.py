@@ -2,7 +2,7 @@ import pyxel
 import random
 
 # 画面やブロックなどの定数定義
-SCREEN_WIDTH = 80
+SCREEN_WIDTH = 120
 SCREEN_HEIGHT = 120
 BLOCK_SIZE = 8  # ブロックサイズ（ピクセル）
 FIELD_WIDTH = 10  # フィールド幅（ブロック数）
@@ -37,6 +37,7 @@ class Tetris:
         # 空のフィールドを作成（0は何もない、1はブロック）
         self.field = [[0]*FIELD_WIDTH for _ in range(FIELD_HEIGHT)]
         self.shape_bag = []  # 形のバッグを初期化
+        self.next_block = None  # 次のブロックを初期化
         self.new_block()  # 最初のブロックを出現
 
     def new_block(self):
@@ -44,8 +45,12 @@ class Tetris:
         if not self.shape_bag:
             self.shape_bag = SHAPES[:]
             random.shuffle(self.shape_bag)
-        # バッグから1つ取り出して現在のブロックに設定
-        self.block, self.color = self.shape_bag.pop()
+        # 次のブロックを設定
+        if self.next_block is None:
+            self.next_block = self.shape_bag.pop()
+        # 現在のブロックを次のブロックに設定し、新しい次のブロックを取得
+        self.block, self.color = self.next_block
+        self.next_block = self.shape_bag.pop() if self.shape_bag else None
         self.x = FIELD_WIDTH // 2 - len(self.block[0]) // 2
         self.y = 0
 
@@ -122,10 +127,13 @@ class Tetris:
             self.hard_drop()
         if pyxel.btnp(pyxel.KEY_Q):
             pyxel.quit()
+        if pyxel.btnp(pyxel.KEY_R):
+            self.reset()
 
     def draw(self):
         # 画面の描画
-        pyxel.cls(0)  # 背景を黒にクリア
+        pyxel.cls(7)  # 背景を青にクリア
+        pyxel.line(FIELD_WIDTH * BLOCK_SIZE, 0, FIELD_WIDTH * BLOCK_SIZE, FIELD_HEIGHT * BLOCK_SIZE, 0)
         # 固定されたフィールドのブロックを描画
         for y, row in enumerate(self.field):
             for x, cell in enumerate(row):
@@ -139,6 +147,15 @@ class Tetris:
                     px = (self.x + cx) * BLOCK_SIZE
                     py = (self.y + cy) * BLOCK_SIZE
                     pyxel.rect(px, py, BLOCK_SIZE, BLOCK_SIZE, self.color)
+
+        # 次のブロックを描画
+        if self.next_block:
+            for cy, row in enumerate(self.next_block[0]):
+                for cx, cell in enumerate(row):
+                    if cell:
+                        px = (FIELD_WIDTH + cx + 2) * BLOCK_SIZE
+                        py = (cy + 2) * BLOCK_SIZE
+                        pyxel.rect(px, py, BLOCK_SIZE, BLOCK_SIZE, self.next_block[1])
 
 # ゲーム開始！
 Tetris()
