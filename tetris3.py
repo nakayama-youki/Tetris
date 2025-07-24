@@ -2,7 +2,7 @@ import pyxel
 import random
 
 # 画面やブロックなどの定数定義
-SCREEN_WIDTH = 120
+SCREEN_WIDTH = 160  # 画面幅を増やしてホールド表示スペースを確保
 SCREEN_HEIGHT = 120
 BLOCK_SIZE = 8  # ブロックサイズ（ピクセル）
 FIELD_WIDTH = 10  # フィールド幅（ブロック数）
@@ -28,7 +28,7 @@ SHAPES = [
 class Tetris:
     def __init__(self):
         # Pyxelの初期化
-        pyxel.init(SCREEN_WIDTH, SCREEN_HEIGHT, title="Pyxel Tetris")
+        pyxel.init(SCREEN_WIDTH, SCREEN_HEIGHT, title="Pyxel Tetris - Hold機能付き")
         self.reset()
         # ゲームのメインループを開始
         pyxel.run(self.update, self.draw)
@@ -38,6 +38,11 @@ class Tetris:
         self.field = [[0]*FIELD_WIDTH for _ in range(FIELD_HEIGHT)]
         self.shape_bag = []  # 形のバッグを初期化
         self.next_block = None  # 次のブロックを初期化
+        self.hold_block = None  # ホールドブロックを初期化
+        self.can_hold = True  # ホールドが使用可能かどうかのフラグ
+        self.lines_cleared = 0  # 消したライン数
+        # テトリミノの使用回数を初期化（T, O, S, Z, I, J, L の順）
+        self.tetrimino_count = [0, 0, 0, 0, 0, 0, 0]
         self.new_block()  # 最初のブロックを出現
 
     def new_block(self):
@@ -53,6 +58,39 @@ class Tetris:
         self.next_block = self.shape_bag.pop() if self.shape_bag else None
         self.x = FIELD_WIDTH // 2 - len(self.block[0]) // 2
         self.y = 0
+        self.can_hold = True  # 新しいブロックが出現したらホールドが再び使用可能
+        
+        # テトリミノの使用回数をカウント
+        tetrimino_index = self.get_tetrimino_index(self.block)
+        if tetrimino_index is not None:
+            self.tetrimino_count[tetrimino_index] += 1
+
+    def get_tetrimino_index(self, block):
+        # ブロックの形からテトリミノのインデックスを取得
+        for i, (shape, _) in enumerate(SHAPES):
+            if block == shape:
+                return i
+        return None
+
+    def hold_current_block(self):
+        # ホールド機能：現在のブロックをホールドし、ホールドされていたブロックを出現させる
+        if not self.can_hold:
+            return  # ホールドが使用できない場合は何もしない
+        
+        current_block = (self.block, self.color)
+        
+        if self.hold_block is None:
+            # ホールドが空の場合、現在のブロックをホールドして新しいブロックを出現
+            self.hold_block = current_block
+            self.new_block()
+        else:
+            # ホールドにブロックがある場合、現在のブロックとホールドブロックを交換
+            self.block, self.color = self.hold_block
+            self.hold_block = current_block
+            self.x = FIELD_WIDTH // 2 - len(self.block[0]) // 2
+            self.y = 0
+        
+        self.can_hold = False  # ホールドを使用したので、次のブロックまで使用不可
 
     def check_collision(self, dx, dy, shape=None):
         # 衝突チェック（左右・下方向・回転時など）
@@ -77,7 +115,11 @@ class Tetris:
 
     def clear_lines(self):
         # ラインが揃っているかチェックし、削除
+        initial_lines = len(self.field)
         self.field = [row for row in self.field if any(cell == 0 for cell in row)]
+        lines_removed = initial_lines - len(self.field)
+        self.lines_cleared += lines_removed  # 消したライン数を追加
+        
         # 削除したぶん上に空行を追加
         while len(self.field) < FIELD_HEIGHT:
             self.field.insert(0, [0]*FIELD_WIDTH)
@@ -109,7 +151,7 @@ class Tetris:
             else:
                 self.fix_block()
 
-        # キー入力処理（左右移動・回転・高速落下）
+        # キー入力処理（左右移動・回転・高速落下・ホールド）
         if pyxel.btnp(pyxel.KEY_A):
             if not self.check_collision(-1, 0):
                 self.x -= 1
@@ -125,6 +167,8 @@ class Tetris:
                 self.y += 1
         if pyxel.btnp(pyxel.KEY_W):
             self.hard_drop()
+        if pyxel.btnp(pyxel.KEY_UP):  # 上キーでホールド
+            self.hold_current_block()
         if pyxel.btnp(pyxel.KEY_Q):
             pyxel.quit()
         if pyxel.btnp(pyxel.KEY_R):
@@ -133,7 +177,10 @@ class Tetris:
     def draw(self):
         # 画面の描画
         pyxel.cls(7)  # 背景を青にクリア
+        
+        # フィールドの右側に境界線を描画
         pyxel.line(FIELD_WIDTH * BLOCK_SIZE, 0, FIELD_WIDTH * BLOCK_SIZE, FIELD_HEIGHT * BLOCK_SIZE, 0)
+        
         # 固定されたフィールドのブロックを描画
         for y, row in enumerate(self.field):
             for x, cell in enumerate(row):
@@ -149,6 +196,7 @@ class Tetris:
                     pyxel.rect(px, py, BLOCK_SIZE, BLOCK_SIZE, self.color)
 
         # 次のブロックを描画
+        pyxel.text(FIELD_WIDTH * BLOCK_SIZE + 4, 8, "NEXT", 0)
         if self.next_block:
             for cy, row in enumerate(self.next_block[0]):
                 for cx, cell in enumerate(row):
@@ -156,6 +204,33 @@ class Tetris:
                         px = (FIELD_WIDTH + cx + 2) * BLOCK_SIZE
                         py = (cy + 2) * BLOCK_SIZE
                         pyxel.rect(px, py, BLOCK_SIZE, BLOCK_SIZE, self.next_block[1])
+
+        # ホールドブロックを描画
+        pyxel.text(FIELD_WIDTH * BLOCK_SIZE + 4, 48, "HOLD", 0)
+        if self.hold_block:
+            # ホールドが使用できない場合は薄い色で表示
+            hold_color = self.hold_block[1] if self.can_hold else 5
+            for cy, row in enumerate(self.hold_block[0]):
+                for cx, cell in enumerate(row):
+                    if cell:
+                        px = (FIELD_WIDTH + cx + 2) * BLOCK_SIZE
+                        py = (cy + 7) * BLOCK_SIZE
+                        pyxel.rect(px, py, BLOCK_SIZE, BLOCK_SIZE, hold_color)
+
+        # 右側にスコア表示をまとめて配置
+        right_x = FIELD_WIDTH * BLOCK_SIZE + 4
+        
+        # 操作方法とスコアを下部にまとめて表示
+        pyxel.text(right_x, 72, f"LINES: {self.lines_cleared}", 0)
+        
+        # 合計使用数を表示
+        total_count = sum(self.tetrimino_count)
+        pyxel.text(right_x, 80, f"TOTAL: {total_count}", 0)
+        
+        # 操作方法を表示
+        pyxel.text(right_x, 88, "UP:HOLD", 0)
+        pyxel.text(right_x, 96, "R:RESET", 0)
+        pyxel.text(right_x, 104, "Q:QUIT", 0)
 
 # ゲーム開始！
 Tetris()
